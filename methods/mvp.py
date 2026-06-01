@@ -1,9 +1,10 @@
 import copy
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributed as dist
-from typing import TypeVar
+from typing import TypeVar, Callable, Optional
 import logging
 
 import logging
@@ -34,41 +35,76 @@ class MVP(_Trainer):
         self.margin  = kwargs.get("margin")
 
         self.labels = torch.empty(0)
-    
+
+        # P0: decaying memory replay boost after task shift (beta=0 disables)
+        self.shift_replay_beta = float(kwargs.get("shift_replay_beta", 0.0))
+        self.shift_replay_tau = float(kwargs.get("shift_replay_tau", 500.0))
+        self.task_shift_detector: Optional[Callable] = kwargs.get("task_shift_detector")
+        self.steps_since_shift = 10**9
+
+    def notify_task_shift(self) -> None:
+        """Reset replay boost (also used by optional task_shift_detector)."""
+        if self.shift_replay_beta <= 0:
+            return
+        self.steps_since_shift = 0
+
+    def _shift_replay_scale(self) -> float:
+        if self.shift_replay_beta <= 0:
+            return 1.0
+        return 1.0 + self.shift_replay_beta * math.exp(
+            -self.steps_since_shift / max(self.shift_replay_tau, 1.0)
+        )
+
+    def _effective_memory_batchsize(self) -> int:
+        if self.memory_batchsize <= 0:
+            return 0
+        scaled = int(round(self.memory_batchsize * self._shift_replay_scale()))
+        return max(1, min(scaled, self.batchsize - 1))
+
     def online_step(self, images, labels, idx):
         self.add_new_class(labels)
-        _loss, _acc, _iter = 0.0, 0.0, 0
+        if self.task_shift_detector is not None and self.task_shift_detector(self, images, labels, idx):
+            self.notify_task_shift()
 
-        self.memory_sampler  = MemoryBatchSampler(self.memory, self.memory_batchsize, self.temp_batchsize * self.online_iter * self.world_size)
-        self.memory_dataloader   = DataLoader(self.train_dataset, batch_size=self.memory_batchsize, sampler=self.memory_sampler, num_workers=4)
-        self.memory_provider     = iter(self.memory_dataloader)
+        _loss, _acc, _iter = 0.0, 0.0, 0
+        memory_bs = self._effective_memory_batchsize()
+        memory_iterations = int(self.temp_batchsize * self.online_iter * self.world_size)
+
+        self.memory_sampler = MemoryBatchSampler(self.memory, memory_bs, memory_iterations)
+        self.memory_dataloader = DataLoader(
+            self.train_dataset, batch_size=memory_bs, sampler=self.memory_sampler, num_workers=4
+        )
+        self.memory_provider = iter(self.memory_dataloader)
 
         for _ in range(int(self.online_iter)):
-            loss, acc = self.online_train([images.clone(), labels.clone()])
+            loss, acc = self.online_train([images.clone(), labels.clone()], memory_bs)
             _loss += loss
             _acc += acc
             _iter += 1
         self.update_memory(idx, labels)
+        self.steps_since_shift += 1
         del(images, labels)
         gc.collect()
         return _loss / _iter, _acc / _iter
 
-    def online_train(self, data):
+    def online_train(self, data, memory_batchsize=None):
         self.model.train()
         total_loss, total_correct, total_num_data = 0.0, 0.0, 0.0
+        if memory_batchsize is None:
+            memory_batchsize = self.memory_batchsize
 
         x, y = data
         self.labels = torch.cat((self.labels, y), 0)
-        
-        if len(self.memory) > 0 and self.memory_batchsize > 0:
+
+        for j in range(len(y)):
+            y[j] = self.exposed_classes.index(y[j].item())
+
+        if len(self.memory) > 0 and memory_batchsize > 0:
             memory_images, memory_labels = next(self.memory_provider)
             for i in range(len(memory_labels)):
                 memory_labels[i] = self.exposed_classes.index(memory_labels[i].item())
             x = torch.cat([x, memory_images], dim=0)
             y = torch.cat([y, memory_labels], dim=0)
-
-        for j in range(len(y)):
-            y[j] = self.exposed_classes.index(y[j].item())
 
         x = x.to(self.device)
         y = y.to(self.device)
@@ -147,7 +183,13 @@ class MVP(_Trainer):
             self.scheduler.step()
             
     def online_before_task(self, task_id):
-        pass
+        # Testing: beta>0 treats each new task as a detected shift (wire real detector later)
+        if self.shift_replay_beta > 0:
+            self.notify_task_shift()
+            print(
+                f"[shift-replay] task {task_id} | scale {self._shift_replay_scale():.3f} | "
+                f"memory_bs {self._effective_memory_batchsize()} (base {self.memory_batchsize})"
+            )
 
     def online_after_task(self, cur_iter):
         pass
@@ -264,6 +306,6 @@ class MVP(_Trainer):
         for i, index in enumerate(idx):
             if len(self.memory) >= self.memory_size:
                 if index < self.memory_size:
-                    self.memory.replace_data([sample[i], self.exposed_classes[label[i].item()]], index)
+                    self.memory.replace_data([sample[i], label[i].item()], index)
             else:
-                self.memory.replace_data([sample[i], self.exposed_classes[label[i].item()]])
+                self.memory.replace_data([sample[i], label[i].item()])

@@ -131,6 +131,18 @@ def base_parser():
     parser.add_argument('--gamma', type=float, default=2., help='# candidates to use for STR hyperparameter')
     parser.add_argument('--margin', type=float, default=0.5, help='# candidates to use for STR hyperparameter')
 
+    parser.add_argument(
+        '--shift_replay_beta',
+        type=float,
+        default=0.0,
+        help='MVP: extra memory replay right after task shift; 0=off, e.g. 0.5 boosts replay by up to 50%%',
+    )
+    parser.add_argument(
+        '--shift_replay_tau',
+        type=float,
+        default=500.0,
+        help='MVP: decay steps for shift replay boost (scale -> 1.0)',
+    )
     parser.add_argument('--profile', action='store_true', help='enable profiling for ViT_Prompt')
 
     # parser.add_argument('--beta', type=float, default=0., help='# candidates to use for peeking into the updated head')
