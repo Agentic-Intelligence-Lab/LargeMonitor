@@ -3,4 +3,5 @@ tensorboard/*
 results/*
 *.log
 *.err
+data/
 ```

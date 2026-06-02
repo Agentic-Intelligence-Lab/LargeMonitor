@@ -102,7 +102,7 @@ class _Trainer():
             self.temp_batchsize = self.batchsize
         self.memory_batchsize = self.batchsize - self.temp_batchsize
 
-        os.makedirs(f"{self.log_path}/logs/{self.dataset_name}/{self.note}", exist_ok=True)
+        os.makedirs(f"{self.log_path}/data/{self.dataset_name}/{self.note}", exist_ok=True)
 
     def setup_distributed_model(self):
         print("Building model...")
@@ -290,11 +290,11 @@ class _Trainer():
 
             print("[2-5] Report task result")
         if self.is_main_process():        
-            np.save(f"{self.log_path}/logs/{self.dataset_name}/{self.note}/seed_{self.rnd_seed}.npy", task_records["task_acc"])
+            np.save(f"{self.log_path}/data/{self.dataset_name}/{self.note}/seed_{self.rnd_seed}.npy", task_records["task_acc"])
 
             if self.eval_period is not None:
-                np.save(f'{self.log_path}/logs/{self.dataset_name}/{self.note}/seed_{self.rnd_seed}_eval.npy', eval_results['test_acc'])
-                np.save(f'{self.log_path}/logs/{self.dataset_name}/{self.note}/seed_{self.rnd_seed}_eval_time.npy', eval_results['data_cnt'])
+                np.save(f'{self.log_path}/data/{self.dataset_name}/{self.note}/seed_{self.rnd_seed}_eval.npy', eval_results['test_acc'])
+                np.save(f'{self.log_path}/data/{self.dataset_name}/{self.note}/seed_{self.rnd_seed}_eval_time.npy', eval_results['data_cnt'])
     
             # Accuracy (A)
             A_auc = np.mean(eval_results["test_acc"])
@@ -457,7 +457,7 @@ class _Trainer():
             print(f"[Train] Task{t_i} Data Info")
             print(data_info);print()
             convert_data_info = self.convert_class_label(data_info)
-            np.save(f"{self.log_path}/logs/{self.dataset_name}/{self.note}/seed_{self.rnd_seed}_task{t_i}_train_data.npy", convert_data_info)
+            np.save(f"{self.log_path}/data/{self.dataset_name}/{self.note}/seed_{self.rnd_seed}_task{t_i}_train_data.npy", convert_data_info)
             print(convert_data_info)
             
             print()

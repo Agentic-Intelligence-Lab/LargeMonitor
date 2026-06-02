@@ -147,7 +147,7 @@ def main():
     )
     args = parser.parse_args()
 
-    logs_root = Path(args.log_path) / "logs"
+    logs_root = Path(args.log_path) / "data"
     if not logs_root.is_dir():
         raise FileNotFoundError(f"not found: {logs_root}")
 

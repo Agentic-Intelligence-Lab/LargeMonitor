@@ -135,13 +135,13 @@ def base_parser():
         '--shift_replay_beta',
         type=float,
         default=0.0,
-        help='MVP: extra memory replay right after task shift; 0=off, e.g. 0.5 boosts replay by up to 50%%',
+        help='MVP: boost online_iter after task shift; scale=1+beta*exp(-step/tau), 0=off',
     )
     parser.add_argument(
         '--shift_replay_tau',
         type=float,
         default=500.0,
-        help='MVP: decay steps for shift replay boost (scale -> 1.0)',
+        help='MVP: decay in online_steps for shift online_iter boost (scale -> 1.0)',
     )
     parser.add_argument('--profile', action='store_true', help='enable profiling for ViT_Prompt')
 
