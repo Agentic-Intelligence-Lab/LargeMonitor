@@ -5,4 +5,5 @@ results/*
 *.err
 data/
 figures/
+outputs/
 ```
