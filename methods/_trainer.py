@@ -18,7 +18,7 @@ from models import get_model
 from datasets import get_dataset
 from utils.augment import Cutout
 from utils.memory import Memory
-from utils.online_sampler import OnlineSampler, OnlineTestSampler
+from utils.online_sampler import OnlineSampler, OnlineTestSampler, ImageNetHSDisjointSampler
 from utils.indexed_dataset import IndexedDataset
 from utils.train_utils import select_optimizer, select_scheduler
 
@@ -223,7 +223,22 @@ class _Trainer():
         self.total_samples = len(self.train_dataset)
 
         train_dataset = IndexedDataset(self.train_dataset)
-        self.train_sampler = OnlineSampler(train_dataset, self.n_tasks, self.m, self.n, self.rnd_seed, self.rnd_NM, self.selection_size)
+        if self.dataset_name == "imagenet-hs":
+            if self.n_tasks not in (5, 10):
+                raise ValueError(
+                    f"imagenet-hs requires --n_tasks 10 (native T1–T10 stream) "
+                    f"or 5 (merged per group), got {self.n_tasks}"
+                )
+            self.train_sampler = ImageNetHSDisjointSampler(
+                train_dataset,
+                num_tasks=self.n_tasks,
+                rnd_seed=self.rnd_seed or 0,
+            )
+            print(f"Using ImageNet-HS native stream ({self.n_tasks} training tasks)")
+        else:
+            self.train_sampler = OnlineSampler(
+                train_dataset, self.n_tasks, self.m, self.n, self.rnd_seed, self.rnd_NM, self.selection_size
+            )
         self.train_dataloader = DataLoader(train_dataset, batch_size=self.batchsize, sampler=self.train_sampler, num_workers=self.n_worker, pin_memory=True)
         self.test_dataloader = DataLoader(self.test_dataset, batch_size=self.batchsize, shuffle=False, num_workers=self.n_worker, pin_memory=True)
 

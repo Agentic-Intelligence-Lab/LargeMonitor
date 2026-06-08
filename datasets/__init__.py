@@ -13,6 +13,7 @@ from .TinyImageNet import TinyImageNet
 from .MNIST import MNIST
 from .FashionMNIST import FashionMNIST
 from .Imagenet_R import Imagenet_R
+from .ImageNet_HS import ImageNet_HS
 from torchvision.datasets import CIFAR10, CIFAR100, ImageNet
 
 __all__ = [
@@ -28,6 +29,7 @@ __all__ = [
     "FashionMNIST",
     "ImageNet",
     "Imagenet_R",
+    "ImageNet_HS",
 ]
 
 # dictionary of tuple of dataset, mean, std
@@ -42,6 +44,7 @@ datasets = {
     "cub200": (CUB200, (0.485, 0.456, 0.406), (0.229, 0.224, 0.225), 200),
     "imagenet": (ImageNet, (0.485, 0.456, 0.406), (0.229, 0.224, 0.225), 1000),
     "imagenet-r": (Imagenet_R, (0.485, 0.456, 0.406), (0.229, 0.224, 0.225), 200),
+    "imagenet-hs": (ImageNet_HS, (0.485, 0.456, 0.406), (0.229, 0.224, 0.225), 50),
 }
 
 def get_dataset(name):

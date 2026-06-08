@@ -338,6 +338,135 @@ class OnlineBatchSampler(Sampler):
     def get_task_classes(self, cur_iter : int) -> Iterable[int]:
         return list(set(self.classes[self.indices[cur_iter]]))
 
+
+class ImageNetHSDisjointSampler(Sampler):
+    """Sample by HS stream step (T1–T10), not Si-Blurry class splits.
+
+    Requires ``stream_task_ids`` on the underlying dataset (``ImageNet_HS``).
+    ``num_tasks=10``: one training session per stream step.
+    ``num_tasks=5``: merge each group's two consecutive steps (tiny + shift).
+    """
+
+    HS_STREAM_STEPS = 10
+
+    def __init__(
+        self,
+        data_source: Optional[Sized],
+        num_tasks: int = 10,
+        rnd_seed: int = 0,
+        cur_iter: int = 0,
+        num_replicas: int = None,
+        rank: int = None,
+    ) -> None:
+        from imagenet_hs import TASK_SPECS
+
+        self.data_source = data_source
+        self.classes = self.data_source.classes
+        self.targets = self.data_source.targets
+        self.task_specs = TASK_SPECS
+        self.generator = torch.Generator().manual_seed(rnd_seed)
+        self.num_tasks = num_tasks
+        self.task = cur_iter
+
+        base = getattr(data_source, "dataset", data_source)
+        stream_task_ids = getattr(base, "stream_task_ids", None)
+        if stream_task_ids is None:
+            raise AttributeError(
+                "ImageNetHSDisjointSampler requires stream_task_ids on the dataset "
+                "(use ImageNet_HS)."
+            )
+
+        if num_tasks not in (5, 10):
+            raise ValueError(
+                f"imagenet-hs supports num_tasks 5 (merged groups) or 10 (native stream), "
+                f"got {num_tasks}"
+            )
+
+        if num_replicas is not None:
+            if not dist.is_available():
+                raise RuntimeError("Distibuted package is not available, but you are trying to use it.")
+            num_replicas = dist.get_world_size()
+        if rank is not None:
+            if not dist.is_available():
+                raise RuntimeError("Distibuted package is not available, but you are trying to use it.")
+            rank = dist.get_rank()
+
+        self.distributed = num_replicas is not None and rank is not None
+        self.num_replicas = num_replicas if num_replicas is not None else 1
+        self.rank = rank if rank is not None else 0
+
+        by_stream = [[] for _ in range(self.HS_STREAM_STEPS)]
+        for i, tid in enumerate(stream_task_ids):
+            by_stream[tid].append(i)
+
+        if num_tasks == 10:
+            self.stream_steps_for_task = [[t] for t in range(self.HS_STREAM_STEPS)]
+        else:
+            self.stream_steps_for_task = [[2 * t, 2 * t + 1] for t in range(5)]
+
+        self.indices = []
+        print("ImageNet-HS stream schedule:")
+        for task_id, steps in enumerate(self.stream_steps_for_task):
+            merged = []
+            for step in steps:
+                merged.extend(by_stream[step])
+            self.indices.append(self._shuffled(merged))
+            spec = TASK_SPECS[steps[-1]]
+            step_label = "+".join(f"T{s + 1}" for s in steps)
+            print(
+                f"  train task {task_id} ({step_label}): "
+                f"group={spec.group} source={spec.source} "
+                f"change={spec.change_type} n={len(self.indices[-1])}"
+            )
+
+        self._refresh_task_sizes()
+
+    def _shuffled(self, indices: list[int]) -> list[int]:
+        if not indices:
+            return []
+        idx = torch.tensor(indices)
+        return idx[torch.randperm(len(idx), generator=self.generator)].tolist()
+
+    def _refresh_task_sizes(self) -> None:
+        if self.distributed:
+            self.num_samples = int(len(self.indices[self.task]) // self.num_replicas)
+            self.total_size = self.num_samples * self.num_replicas
+            self.num_selected_samples = int(len(self.indices[self.task]) // self.num_replicas)
+        else:
+            self.num_samples = int(len(self.indices[self.task]))
+            self.total_size = self.num_samples
+            self.num_selected_samples = int(len(self.indices[self.task]))
+
+    def change_type_for_task(self, task_id: int) -> str:
+        steps = self.stream_steps_for_task[task_id]
+        return self.task_specs[steps[-1]].change_type
+
+    def stream_spec_for_task(self, task_id: int):
+        steps = self.stream_steps_for_task[task_id]
+        return self.task_specs[steps[-1]]
+
+    def __iter__(self) -> Iterable[int]:
+        if self.distributed:
+            indices = self.indices[self.task][self.rank:self.total_size:self.num_replicas]
+            assert len(indices) == self.num_samples
+            return iter(indices[:self.num_selected_samples])
+        return iter(self.indices[self.task])
+
+    def __len__(self) -> int:
+        return self.num_selected_samples
+
+    def set_task(self, cur_iter: int) -> None:
+        if cur_iter >= len(self.indices) or cur_iter < 0:
+            raise ValueError("task out of range")
+        self.task = cur_iter
+        self._refresh_task_sizes()
+
+    def get_task(self, cur_iter: int) -> Iterable[int]:
+        indices = self.indices[cur_iter][self.rank:self.total_size:self.num_replicas]
+        assert len(indices) == self.num_samples
+        return indices[:self.num_selected_samples]
+
+
 class OnlineTestSampler(Sampler):
     def __init__(self, data_source: Optional[Sized], exposed_class : Iterable[int], num_replicas: int=None, rank: int=None) -> None:
         self.data_source    = data_source

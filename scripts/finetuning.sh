@@ -1,20 +1,17 @@
 #!/bin/bash
 
-MODE="er"
+MODE="Finetuning"
 DATASET="imagenet-hs" # cifar10, cifar100, tinyimagenet, imagenet-r, imagenet-hs
 N_TASKS=10
 GPU_TRANSFORM="--gpu_transform"
 USE_AMP="--use_amp"
-SEEDS=$SLURM_ARRAY_TASK_ID
 
-ONLINE_ITER=1
+MEM_SIZE=0 ONLINE_ITER=1
 MODEL_NAME="vit_base" EVAL_PERIOD=1000
 BATCHSIZE=64; LR=5e-3 OPT_NAME="adam" SCHED_NAME="default"
+NOTE=FT_${DATASET}_BS_${BATCHSIZE}_ITER_${ONLINE_ITER}
 
-MEM_SIZE=2000
-NOTE=ER_${DATASET}_MEM_${MEM_SIZE}_BS_${BATCHSIZE}_ITER_${ONLINE_ITER}
-
-CUDA_IDX=7
+CUDA_IDX=1
 for seed in 1 2 3 # 4 5
 do
     export CUDA_VISIBLE_DEVICES=$CUDA_IDX

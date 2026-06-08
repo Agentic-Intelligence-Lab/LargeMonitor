@@ -135,13 +135,20 @@ def base_parser():
         '--shift_replay_beta',
         type=float,
         default=0.0,
-        help='MVP: boost online_iter after task shift; scale=1+beta*exp(-step/tau), 0=off',
+        help='MVP: scale online_iter after shift: 1+beta*exp(-step/tau); beta>0 increase, beta<0 decrease, 0=off',
     )
     parser.add_argument(
         '--shift_replay_tau',
         type=float,
         default=500.0,
         help='MVP: decay in online_steps for shift online_iter boost (scale -> 1.0)',
+    )
+    parser.add_argument(
+        '--shift_policy_mode',
+        type=str,
+        default='oracle',
+        choices=['oracle'],
+        help='MVP-Shift: how to obtain shift type (oracle uses HS task metadata)',
     )
     parser.add_argument('--profile', action='store_true', help='enable profiling for ViT_Prompt')
 

@@ -13,6 +13,7 @@ from typing import Callable, Optional
 
 from PIL import Image
 from torch.utils.data import Dataset
+import torchvision.transforms as transforms
 
 from imagenet_hs import (
     CLASS40,
@@ -61,7 +62,16 @@ class ImageNet_HS(Dataset):
         del download  # offline only; use imagenet_hs / build_tiny_imagenet_corr to prepare data
 
         self.root = os.path.expanduser(root)
-        self.transform = transform
+        self.path = self.root
+        # Match Imagenet_R behavior: force a fixed image size before DataLoader collation.
+        if transform is None:
+            self.transform = transforms.Compose(
+                [transforms.Resize(256), transforms.RandomCrop(224)]
+            )
+        else:
+            self.transform = transforms.Compose(
+                [transforms.Resize(256), transforms.RandomCrop(224), transform]
+            )
         self.target_transform = target_transform
         self.train = train
 
@@ -79,14 +89,18 @@ class ImageNet_HS(Dataset):
                 self.stream_task_ids.append(spec.task_id - 1)
 
         self.classes = list(range(NUM_CLASSES))
-        self.class_to_idx = {i: i for i in range(NUM_CLASSES)}
+        # Keep ImageFolder-like shape for legacy trainers.
+        self.class_to_idx = list(range(NUM_CLASSES))
         self.targets = [label for _, label in self.samples]
+        self.imgs = self.samples
         self.class_names = list(CLASS40)
 
     def __len__(self) -> int:
         return len(self.samples)
 
     def __getitem__(self, index: int):
+        if hasattr(index, "item"):
+            index = int(index.item())
         path, label = self.samples[index]
         img = Image.open(path).convert("RGB")
         if self.transform is not None:

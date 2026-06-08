@@ -1,21 +1,24 @@
 #!/bin/bash
 
-MODE="er"
-DATASET="imagenet-hs" # cifar10, cifar100, tinyimagenet, imagenet-r, imagenet-hs
+MODE="mvp_shift"
 N_TASKS=10
 GPU_TRANSFORM="--gpu_transform"
 USE_AMP="--use_amp"
-SEEDS=$SLURM_ARRAY_TASK_ID
 
-ONLINE_ITER=1
-MODEL_NAME="vit_base" EVAL_PERIOD=1000
-BATCHSIZE=64; LR=5e-3 OPT_NAME="adam" SCHED_NAME="default"
+MEM_SIZE=0
+ONLINE_ITER=3
+MODEL_NAME="mvp"
+EVAL_PERIOD=1000
+BATCHSIZE=64
+LR=5e-3
+OPT_NAME="adam"
+SCHED_NAME="default"
 
-MEM_SIZE=2000
-NOTE=ER_${DATASET}_MEM_${MEM_SIZE}_BS_${BATCHSIZE}_ITER_${ONLINE_ITER}
+DATASET="imagenet-hs"
+NOTE=MVPShift_${DATASET}_MEM_${MEM_SIZE}_BS_${BATCHSIZE}_ITER_${ONLINE_ITER}
 
-CUDA_IDX=7
-for seed in 1 2 3 # 4 5
+CUDA_IDX=4
+for seed in 1 2 3
 do
     export CUDA_VISIBLE_DEVICES=$CUDA_IDX
     python main.py --mode $MODE \
@@ -25,7 +28,10 @@ do
     --model_name $MODEL_NAME --opt_name $OPT_NAME --sched_name $SCHED_NAME \
     --lr $LR --batchsize $BATCHSIZE \
     --memory_size $MEM_SIZE $GPU_TRANSFORM --online_iter $ONLINE_ITER --data_dir ./data \
-    --note $NOTE --eval_period $EVAL_PERIOD --n_worker 4 > results/logs/${NOTE}_${seed}.log 2>&1 &
+    --note $NOTE --eval_period $EVAL_PERIOD --n_worker 4 \
+    --shift_policy_mode oracle \
+    --use_mask --use_contrastiv --use_afs --use_gsf \
+    > results/logs/${NOTE}_${seed}.log 2>&1 &
 
     CUDA_IDX=$((CUDA_IDX + 1))
 done

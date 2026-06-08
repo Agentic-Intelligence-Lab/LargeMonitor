@@ -43,13 +43,13 @@ class MVP(_Trainer):
         self.steps_since_shift = 10**9
 
     def notify_task_shift(self) -> None:
-        """Reset online_iter boost (also used by optional task_shift_detector)."""
-        if self.shift_replay_beta <= 0:
+        """Reset online_iter scale (also used by optional task_shift_detector)."""
+        if self.shift_replay_beta == 0:
             return
         self.steps_since_shift = 0
 
     def _shift_iter_scale(self) -> float:
-        if self.shift_replay_beta <= 0:
+        if self.shift_replay_beta == 0:
             return 1.0
         return 1.0 + self.shift_replay_beta * math.exp(
             -self.steps_since_shift / max(self.shift_replay_tau, 1.0)
@@ -184,7 +184,7 @@ class MVP(_Trainer):
             
     def online_before_task(self, task_id):
         # Testing: beta>0 treats each new task as a detected shift (wire real detector later)
-        if self.shift_replay_beta > 0:
+        if self.shift_replay_beta != 0:
             self.notify_task_shift()
             print(
                 f"[shift-iter] task {task_id} | scale {self._shift_iter_scale():.3f} | "
